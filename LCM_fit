@@ -1,0 +1,80 @@
+%% LCM stats import for S1 with no habit (and thus no recall)
+clear all;
+%% Inputs
+LCM_S1_and_S2_path = '/';
+stats_path_S1 = '/';
+stats_path_S2 = '/';
+LCM_individual_results = '/';
+% Setings for visualisation
+logBF_threshold = 0.088;
+no_of_trials = 50; % acquisition and four blocks of extinction
+% Setting default LCM options
+opts.a = 1;          %(hyperparameter of beta prior: pseudo-count for feature presence)
+opts.b = 1;          %(hyperparameter of beta prior: pseudo-count for feature absence)
+opts.alpha = 0.1;    %(concentration parameter for Chinese restaurant process prior)
+opts.stickiness = 0; %(stickiness parameer for Chinese restaurant process prior), This paramater governs mode persistence.
+opts.K = 10;         %(maximum number of latent causes)
+opts.M = 1;          %(number of particles; 1 = local MAP)
+%% Subjects
+% Issues and exclusions for S1
+% cases to exclude from analysis due to issues in S1
+S1_cases_with_unresolvable_issues = ["75", "66", "16", "73", "80"]; % "88" was recently added... removed for this analysis
+S1_missing_cases = ["01", "03", "04", "34", "47", "51", "54"];
+S1_missing_marker_or_stimulus = ["36", "37", "38", "39", "40", "68"];
+% potential issues due to distortion
+S1_ditorted_signal = ["76", "41", "48", "74", "86"];
+% Issues flagged post DCM run
+S1_signal_issues = ["59"];
+S1_issues_in_PsPM = ["43"];
+% Issues and exclusions for S2
+% cases to exclude from analysis due to issues in S2
+S2_missing_cases = ["15", "36", "37", "38", "39", "40", "68"];
+S2_cases_with_unresolvable_issues = ["62"];
+S2_missing_marker_or_stimulus = ["07", "65"];
+% potential issues due to distortion
+S2_ditorted_signal = ["60", "61"];
+%% Running LCM_fit loop
+all_cases = ["01", "02", "03", "04", "05", "06", "07", "08", "09", 10 : 92];
+omit_cases = [S1_issues_in_PsPM, S1_signal_issues, S1_ditorted_signal, S2_ditorted_signal, S1_cases_with_unresolvable_issues, S1_missing_cases, S1_missing_marker_or_stimulus, S2_missing_cases, S2_cases_with_unresolvable_issues, S2_missing_marker_or_stimulus];
+cases_logic = ~ismember(all_cases, omit_cases);
+SUB_IDS = all_cases(cases_logic);
+n_sub = numel(SUB_IDS);
+% Setting up a structure for results across participants
+LCM_results.alpha = zeros(n_sub, 1); % Contains (final) individual alpha estimates 
+LCM_results.logBF = zeros(n_sub, 1); % Contains individual log BF estimates 
+LCM_results.latents = zeros(n_sub, opts.K); % Contains the probability of causes being active in the sample 
+subject_names = {0};
+for i_sub = 1 : n_sub
+    tic;
+    sub_id = SUB_IDS(i_sub)
+    S1_and_S2 = sprintf('stats_LCM_ECB0%s_S1_and_S2_no_habit_no_recall.mat', sub_id);
+    if i_sub == 1 % Keep track of subject IDs
+       subject_names(end) = {sprintf('ECB0%s', sub_id)};
+    else subject_names(end+1) = {sprintf('ECB0%s', sub_id)};
+    end
+    load(fullfile(LCM_S1_and_S2_path, S1_and_S2));
+    first_results = LCM_fit(LCM_data, opts); % Run LCM with MAP and default alpha
+    % Set new options for subject with new alpha and 1000 particles
+    sub_id_opts = opts; sub_id_opts.alpha = first_results.alpha; sub_id_opts.M = 1000; % Replace this
+    individual_result = LCM_fit(LCM_data, sub_id_opts); % Run LCM again
+    % save individual results for future reference
+    individual_file_name = sprintf('LCM_ECB0%s_result.mat', sub_id);
+    save(fullfile(LCM_individual_results, individual_file_name), 'individual_result'); 
+    % Add individual results to a vector of
+    LCM_results.alpha(i_sub, 1) = individual_result.alpha;
+    LCM_results.logBF(i_sub, 1) = individual_result.logBF;
+    % Finally, get the mean probability of each stage being active
+    temp_matrix = zeros(no_of_trials, opts.K);
+    for index_i = 1 : no_of_trials
+        mean_probability_per_trial = mean(individual_result.latents(index_i).post);
+        for latent_i = 1 : length(mean_probability_per_trial)
+            temp_matrix(index_i, latent_i) = mean_probability_per_trial(latent_i);
+        end
+    end
+    LCM_results.latents(i_sub, :) = mean(temp_matrix);
+    toc;
+end
+LCM_results.mean_latents = mean(LCM_results.latents);
+% Save the collated alpha and logBF values
+save('LCM_results_all_subjects_no_habit_no_recall', 'LCM_results');
+% :-) Matthew 08.09.20
