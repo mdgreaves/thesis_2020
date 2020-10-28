@@ -1,0 +1,55 @@
+%% Checks for no saliva break, long breaks, large negative deflections and distorted signal (session 1)
+% separates files that require visual artefact checks
+ 
+% Loop from case "01" to "92"
+% enter mising cases as strings
+missing_cases = ["01", "03", "04", "34", "47", "51", "54"];
+data_path = '/';
+no_saliva_break_path = '/';
+review_breaks_path = '/';
+review_neg_deflections = '/';
+distorted_signal_path = '/';
+ 
+%% Four loops
+all_cases = ["01", "02", "03", "04", "05", "06", "07", "08", "09", 10:92];
+cases_logic = ~ismember(all_cases, missing_cases);
+SUB_IDS = all_cases(cases_logic);
+n_sub = numel(SUB_IDS);
+for i_sub = 1 : n_sub
+    sub_id = SUB_IDS(i_sub); 
+    file_name = sprintf('tpspm_ECB0%s_S1.mat', sub_id);
+    load(fullfile(data_path, file_name));
+    % First, check for saliva break
+    markers = data{2, 1}.markerinfo.name;
+    marker_seconds = data{2, 1}.data;
+    w = [marker_seconds; 0];
+    e = [0; marker_seconds];
+    r = [w, e];
+    t = r(:,1)-r(:,2);
+    if sum(t(:)>40) < 1 % one break is expected
+        copyfile(fullfile(data_path, file_name), no_saliva_break_path)
+    end
+    % Second, check for long breaks between markers
+    if sum(t(:)>40) > 1
+        copyfile(fullfile(data_path, file_name), review_breaks_path)
+    end
+    % Third, check for large negative deflections in time series
+    a1 = data{1, 1}.data;
+    a2 = [0; 0; 0; 0; 0; a1];
+    a3 = [a1; 0; 0; 0; 0; 0];
+    a4 = [a2, a3];
+    a5 = a4(:, 1)-a4(:,2);
+    if sum(a5(:)> 0.000000075) > 100 && exist(fullfile(review_breaks_path, file_name)) ~= 2
+        copyfile(fullfile(data_path, file_name), review_neg_deflections)
+    end
+    % Fourth, check for distorted signal
+    b1 = data{1, 1}.data;
+    b2 = [0; b1];
+    b3 = [b1; 0];
+    b4 = [b2, b3];
+    b5 = b4(:, 1)-b4(:,2);
+    if sum(b5(:)> 0.000000075) > 4 && exist(fullfile(review_breaks_path, file_name)) ~= 2 && exist(fullfile(review_neg_deflections, file_name)) ~= 2
+        copyfile(fullfile(data_path, file_name), distorted_signal_path)
+    end
+end
+ 
