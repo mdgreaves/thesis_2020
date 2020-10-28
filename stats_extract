@@ -1,0 +1,97 @@
+%% Stats extract for S1
+clear all;
+%% Inputs
+data_path = '/';
+model_path = '/';
+stats_path = '/';
+% Subjects
+% Exclusions for S1
+S1_cases_with_unresolvable_issues = ["75", "66", "16", "73", "80"];
+S1_missing_cases = ["01", "03", "04", "34", "47", "51", "54"];
+S1_missing_marker_or_stimulus = ["36", "37", "38", "39", "40", "68"];
+% Exclusions for S2
+S2_missing_cases = ["15", "36", "37", "38", "39", "40", "68"];
+S2_cases_with_unresolvable_issues = ["62"];
+S2_missing_marker_or_stimulus = ["07", "65"];
+First_analysis_missing = ["43", "59"]; 
+% Sample
+all_cases = ["01", "02", "03", "04", "05", "06", "07", "08", "09", 10 : 92];
+omit_cases = [First_analysis_missing, S1_cases_with_unresolvable_issues, S1_missing_cases, S1_missing_marker_or_stimulus, S2_missing_cases, S2_cases_with_unresolvable_issues, S2_missing_marker_or_stimulus];
+cases_logic = ~ismember(all_cases, omit_cases);
+%% Export statistics loop
+SUB_IDS = all_cases(cases_logic);
+n_sub = numel(SUB_IDS);
+for i_sub = 1 : n_sub
+    sub_id = SUB_IDS(i_sub);
+    DCM_out_mat = sprintf('DCM_ECB0%s_S1.mat', sub_id);
+    stats_out = sprintf('stats_DCM_ECB0%s_S1.mat', sub_id);
+    stats_out_2 = sprintf('stats_LCM_ECB0%s_S1.mat', sub_id);
+    % load DCM file
+    load(fullfile(model_path, DCM_out_mat));
+    % replace trial names with integers
+    trial_names = dcm.trlnames';
+    CS_pos_without_shock = find(strcmp('CS+|US-', trial_names));
+    CS_pos_with_shock = find(strcmp('CS+|US+', trial_names));
+    trial_names_2 = ones(38,1); trial_names_2(CS_pos_without_shock) = 2; trial_names_2(CS_pos_with_shock) = 3; 
+    trial_names = trial_names_2;
+    % extract responses and create data frame
+    flex_amplitude = dcm.stats(:,1);
+    flex_peak_latency = dcm.stats(:,2);
+    flex_dispersion = dcm.stats(:,3);
+    fixed_amplitude = dcm.stats(:,4);
+    matrix_1 = [trial_names, flex_amplitude, flex_peak_latency, flex_dispersion, fixed_amplitude];
+    habituation = matrix_1(1:8, :); acquisition = matrix_1(9:18, :); early_extinction = matrix_1(19:28, :); late_extinction = matrix_1(29:38, :);
+    block_array = {'block_1_habituation', 'block_2_acquisition', 'block_3_early_extinction', 'block_4_late_extinction'; habituation, acquisition, early_extinction, late_extinction};
+    blocks = length(block_array);
+    for block_i = 1:blocks
+        examined_block = block_array{2,block_i};
+        examined_block_CSminus = zeros(1, size(examined_block, 2));
+        examined_block_CSplus = zeros(1, size(examined_block, 2));
+        trials = length(examined_block);
+        for trial_i = 1:trials       
+            if examined_block(trial_i,1) == 1 % CS-
+            examined_block_CSminus = [examined_block_CSminus; examined_block(trial_i,:)];
+            else examined_block_CSplus = [examined_block_CSplus; examined_block(trial_i,:)];
+            end   
+        end
+        examined_block_CSminus(1,:) = []; examined_block_CSplus(1,:) = [];        
+        odds = [1:2:length(examined_block)]';
+        evens = [2:2:length(examined_block)]';
+        examined_block_CSminus = [odds, examined_block_CSminus];
+        examined_block_CSplus = [evens, examined_block_CSplus];
+        examined_block_combined = sortrows([examined_block_CSminus; examined_block_CSplus]);
+        examined_block_combined(:,1) = [];
+        differential_responding = examined_block_combined(evens,:) - examined_block_combined(odds,:);
+        differential_responding(:,1) = nan;
+        order_suffix = sprintf('%s_order', block_array{1,block_i});
+        stats.(order_suffix) = examined_block_combined;
+        diff_response_suffix = sprintf('%s_diff_resp', block_array{1,block_i});
+        stats.(diff_response_suffix) = differential_responding;
+    end
+    stats.column_names = {'CS- [1], CS+ [2], US [3]' 'flex_amplitude', 'flex_peak_latency', 'flex_dispersion', 'fixed_amplitude'};
+    stats.original_output = {block_array};
+    stats = orderfields(stats);
+    save(fullfile(stats_path, stats_out), 'stats');
+    % Now for the LCM stats
+    LCM_concatenate = [stats.original_output{1, 1}{2, 1}; stats.original_output{1, 1}{2, 2}; stats.original_output{1, 1}{2, 3}; stats.original_output{1, 1}{2, 4}];
+    LCM_Stimuli = zeros(length(LCM_concatenate), 3); 
+    % column 1: US; column 2: CS1 (CS+); column 3: CS2.
+    Stimuli = LCM_concatenate(:,1)';
+    for Stimulus_i = 1:length(Stimuli)
+        Stimulus_x = Stimuli(Stimulus_i);
+        if Stimulus_x == 1
+        LCM_Stimuli(Stimulus_i, 3) = 1;
+        elseif Stimulus_x == 2
+        LCM_Stimuli(Stimulus_i, 2) = 1;
+        else LCM_Stimuli(Stimulus_i, 1:2) = 1;
+    end
+    Stimuli_data = LCM_Stimuli;
+    end
+    LCM_data.CR = LCM_concatenate(:,2);
+    LCM_data.CS = Stimuli_data(:, 2:3);
+    LCM_data.US = Stimuli_data(:, 1);
+    save(fullfile(stats_path, stats_out_2), 'LCM_data');      
+end
+clear all
+% :-)
+% Matthew
