@@ -1,0 +1,105 @@
+%% Run_DCM for one subject (S1)
+clear all;
+%% Inputs
+sub_id = "/";
+data_path = '/';
+artefact_path = '/';
+event_file_path = '/';
+model_path = '/';
+stats_path = '/';
+%% File names
+pspm_file_name = sprintf('tpspm_ECB0%s_S1.mat', sub_id);
+pre_existing_epoch = sprintf('art_tpspm_ECB0%s_S1.mat', sub_id);
+event_file_name = sprintf('tpspm_ECB0%s_S1_event_file.mat', sub_id);
+DCM_out = sprintf('DCM_ECB0%s_S1', sub_id);
+DCM_out_mat = sprintf('DCM_ECB0%s_S1.mat', sub_id);
+stats_out = sprintf('stats_DCM_ECB0%s_S1.mat', sub_id);
+%% Load PsPM file and find marker information
+load(fullfile(data_path, pspm_file_name));
+% Finding stimulus colour
+markers = data{2, 1}.markerinfo.name;
+shock_rows = find(ismember(markers, 'Shock'));
+blue_rows = find(ismember(markers, 'Blue Stimulus'));
+red_rows = find(ismember(markers, 'Red Stimulus'));
+First_shock = shock_rows(1);
+Stim_color_variable = char(markers(First_shock-2));
+%'Red Stimulus' has 12 characters
+    if length(Stim_color_variable) == 12
+    stim_rows = red_rows; non_stim_rows = blue_rows; 
+    else
+    stim_rows = blue_rows; non_stim_rows = red_rows;
+    end
+% Here we specify which rows are stimrows and non_stim_rows
+markers_con1 = stim_rows(1:19);
+markers_con2 = non_stim_rows(1:19);
+% Saves the pulled onsets from above into onsets
+onsets{1} = data{2, 1}.data(markers_con1,1);
+onsets{2} = data{2, 1}.data(markers_con2,1);
+% All the onsets concatenated together
+allonsets=cat(1, onsets{1,:});
+%Onsets in a sorted order since that is all PsPM will take
+x = sort(allonsets);
+% Vector of with our index of stim and nonstim trials
+stim_index = find(ismember(x, onsets{1}));
+nonstim_index = find(ismember(x, onsets{2}));
+% vector with CS+|US+ and CS+|US-
+CSplus_USminus = cat(1,stim_index(1:4),stim_index(10:19));
+CSplus_USplus = stim_index(5:9);
+%% Run DCM
+% Initialize PsPM
+pspm_init;
+pspm_jobman('initcfg');
+
+% DCM pipeline
+matlabbatch{1}.pspm{1}.first_level{1}.scr{1}.dcm.modelfile = DCM_out;
+matlabbatch{1}.pspm{1}.first_level{1}.scr{1}.dcm.outdir = {model_path};
+matlabbatch{1}.pspm{1}.first_level{1}.scr{1}.dcm.chan.chan_def = 0;
+matlabbatch{1}.pspm{1}.first_level{1}.scr{1}.dcm.session.datafile = {fullfile(data_path, pspm_file_name)};
+matlabbatch{1}.pspm{1}.first_level{1}.scr{1}.dcm.session.timing.timingfile = {fullfile(event_file_path, event_file_name)};
+matlabbatch{1}.pspm{1}.first_level{1}.scr{1}.dcm.session.condition(1).name='CS+|US-';
+matlabbatch{1}.pspm{1}.first_level{1}.scr{1}.dcm.session.condition(1).index=CSplus_USminus;
+matlabbatch{1}.pspm{1}.first_level{1}.scr{1}.dcm.session.condition(2).name='CS+|US+';
+matlabbatch{1}.pspm{1}.first_level{1}.scr{1}.dcm.session.condition(2).index=CSplus_USplus;
+matlabbatch{1}.pspm{1}.first_level{1}.scr{1}.dcm.session.condition(3).name='CS-';
+matlabbatch{1}.pspm{1}.first_level{1}.scr{1}.dcm.session.condition(3).index=nonstim_index;
+    if exist(fullfile(artefact_path, pre_existing_epoch)) == 2
+       matlabbatch{1}.pspm{1}.first_level{1}.scr{1}.dcm.session.missing.epochs.epochfile = {fullfile(artefact_path, pre_existing_epoch)};
+    else matlabbatch{1}.pspm{1}.first_level{1}.scr{1}.dcm.session.missing.no_epochs = 0;
+    end
+matlabbatch{1}.pspm{1}.first_level{1}.scr{1}.dcm.data_options.norm = 0;
+matlabbatch{1}.pspm{1}.first_level{1}.scr{1}.dcm.data_options.filter.def = 0;
+matlabbatch{1}.pspm{1}.first_level{1}.scr{1}.dcm.data_options.substhresh = 2;
+matlabbatch{1}.pspm{1}.first_level{1}.scr{1}.dcm.data_options.constr_model = 0;
+matlabbatch{1}.pspm{1}.first_level{1}.scr{1}.dcm.resp_options.crfupdate = 0;
+matlabbatch{1}.pspm{1}.first_level{1}.scr{1}.dcm.resp_options.indrf = 0;
+matlabbatch{1}.pspm{1}.first_level{1}.scr{1}.dcm.resp_options.getrf = 0;
+matlabbatch{1}.pspm{1}.first_level{1}.scr{1}.dcm.resp_options.rf = 0;
+matlabbatch{1}.pspm{1}.first_level{1}.scr{1}.dcm.inv_options.depth = 2;
+matlabbatch{1}.pspm{1}.first_level{1}.scr{1}.dcm.inv_options.sfpre = 2;
+matlabbatch{1}.pspm{1}.first_level{1}.scr{1}.dcm.inv_options.sfpost = 5;
+matlabbatch{1}.pspm{1}.first_level{1}.scr{1}.dcm.inv_options.sffreq = 0.5;
+matlabbatch{1}.pspm{1}.first_level{1}.scr{1}.dcm.inv_options.sclpre = 2;
+matlabbatch{1}.pspm{1}.first_level{1}.scr{1}.dcm.inv_options.sclpost = 5;
+matlabbatch{1}.pspm{1}.first_level{1}.scr{1}.dcm.inv_options.ascr_sigma_offset = 0.1;
+matlabbatch{1}.pspm{1}.first_level{1}.scr{1}.dcm.disp_options.dispwin = 0;
+matlabbatch{1}.pspm{1}.first_level{1}.scr{1}.dcm.disp_options.dispsmallwin = 0;
+pspm_jobman('run', matlabbatch);
+%% Export statistics
+% load DCM file
+load(fullfile(model_path, DCM_out_mat));
+% replace trial names with integers
+trial_names = dcm.trlnames';
+CS_pos_without_shock = find(strcmp('CS+|US-', trial_names));
+CS_pos_with_shock = find(strcmp('CS+|US+', trial_names));
+trial_names_2 = ones(38,1); trial_names_2(CS_pos_without_shock) = 2; trial_names_2(CS_pos_with_shock) = 3; 
+trial_names = trial_names_2;
+% extract responses and create data frame
+flex_amplitude = dcm.stats(:,1);
+flex_peak_latency = dcm.stats(:,2);
+flex_dispersion = dcm.stats(:,3);
+fixed_amplitude = dcm.stats(:,4);
+matrix_1 = [trial_names, flex_amplitude, flex_peak_latency, flex_dispersion, fixed_amplitude];
+habituation = matrix_1(1:8, :); acquisition = matrix_1(9:18, :); early_extinction = matrix_1(19:28, :); late_extinction = matrix_1(29:38, :);
+habituation = sortrows(habituation); acquisition = sortrows(acquisition); early_extinction = sortrows(early_extinction); late_extinction = sortrows(late_extinction);
+stats = [habituation; acquisition; early_extinction; late_extinction];
+save(fullfile(stats_path, stats_out), 'stats');
