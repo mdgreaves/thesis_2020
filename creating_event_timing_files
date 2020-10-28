@@ -1,0 +1,92 @@
+%% S1 artefact and events script 02.08.20
+%% Inputs
+data_path = '';
+artefact_path = '';
+event_file_path = '';
+model_path = '';
+pspm_path = '';
+ 
+%% Creating/editing artefact file and events file
+% no shock marker for... 36, 37, 38, 39, 40, 68
+missing_cases = ["01", "03", "04", "34", "47", "51", "54", "36", "37", "38", "39", "40", "68"];
+all_cases = ["01", "02", "03", "04", "05", "06", "07", "08", "09", 10: 92];
+cases_logic = ~ismember(all_cases, missing_cases);
+SUB_IDS = all_cases(cases_logic);
+n_sub = numel(SUB_IDS);
+for i_sub = 1 : n_sub
+    sub_id = SUB_IDS(i_sub);
+    pspm_file_name = sprintf('tpspm_ECB0%s_S1.mat', sub_id);
+    pre_existing_epoch = sprintf('art_tpspm_ECB0%s_S1.mat', sub_id);
+    event_file_name = sprintf('tpspm_ECB0%s_S1_event_file.mat', sub_id);
+    % Load PsPM file
+    load(fullfile(data_path, pspm_file_name));
+ 
+    makers = data{2, 1}.markerinfo.name;
+    maker_seconds = data{2, 1}.data;
+    end_of_spit = find(ismember(makers, 'Start of Extinction Early Phase'));
+    spit_epoch_end = maker_seconds(end_of_spit, 1);
+ 
+    % If last pre saliva collection marker is a shock (i.e., SCR is evoked), add 30 seconds
+    % Otherwise, add 10 seconds
+    last_pre_saliva_marker = string(makers(end_of_spit-1));
+    if last_pre_saliva_marker == "Shock"
+    spit_epoch_start = maker_seconds(end_of_spit-1, 1) +29;
+    else spit_epoch_start = maker_seconds(end_of_spit-1, 1) +19;
+    end
+ 
+    % If artefact file exists, add saliva collection epoch to file
+    % Otherwise, create new artefact file with saliva collection epoch
+    if exist(fullfile(artefact_path, pre_existing_epoch)) == 2
+    load(fullfile(artefact_path, pre_existing_epoch));
+    a = [spit_epoch_start, spit_epoch_end];
+    b = [epochs; a];
+    epochs = sort(b);
+    save(fullfile(artefact_path, pre_existing_epoch), 'epochs');
+    else epochs = [spit_epoch_start, spit_epoch_end];
+    save(fullfile(artefact_path, pre_existing_epoch), 'epochs');
+    end
+ 
+    %% Creating event file
+    % Finding stimulus colour
+    shock_rows = find(ismember(makers, 'Shock'));
+    blue_rows = find(ismember(makers, 'Blue Stimulus'));
+    red_rows = find(ismember(makers, 'Red Stimulus'));
+    First_shock = shock_rows(1);
+    Stim_color_variable = char(makers(First_shock-2));
+ 
+    %'Red Stimulus' has 12 characters
+    if length(Stim_color_variable) == 12
+    stim_rows = red_rows; non_stim_rows = blue_rows; 
+    else
+    stim_rows = blue_rows; non_stim_rows = red_rows;
+    end
+ 
+    % Here we specify which rows are stimrows and non_stim_rows
+    markers_con1 = stim_rows(1:19);
+    markers_con2 = non_stim_rows(1:19);
+    % Saves the pulled onsets from above into onsets
+    onsets{1} = data{2, 1}.data(markers_con1,1);
+    onsets{2} = data{2, 1}.data(markers_con2,1);
+ 
+    % All the onsets concatenated together
+    allonsets=cat(1, onsets{1,:});
+    %Onsets in a sorted order since that is all PsPM will take
+    x = sort(allonsets);
+    % Vector of with our index of stim and nonstim trials
+    stim_index = find(ismember(x, onsets{1}));
+    nonstim_index = find(ismember(x, onsets{2}));
+    % vector with CS+|US+ and CS+|US-
+    CSplus_USminus = cat(1,stim_index(1:4),stim_index(10:19));
+    CSplus_USplus = stim_index(5:9);
+ 
+    %Create the  event file% 
+    SOA = 12; % delay between CS and US onset in seconds
+    CS_onset = x ; % recorded triggers of CS onset in seconds
+    US_onset = x + SOA; % US starts 12 seconds after CS
+    % variable latency for CS response between CS onset and US onset / omission
+    events {1} = [CS_onset US_onset ]; % define an interval of 12 seconds for each trial
+    % constant onset for US response
+    events {2} = US_onset;
+    save(fullfile(event_file_path, event_file_name), 'events');
+end
+% grazie per aver letto!
